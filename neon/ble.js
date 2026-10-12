@@ -127,7 +127,7 @@ class Strip {
         const [key, bytes] = this.pending.entries().next().value;
         this.pending.delete(key);
         await this.writeRaw(bytes);
-        await new Promise(r => setTimeout(r, 12));
+        await new Promise(r => setTimeout(r, 20)); // ~40 команд/с — больше контроллер не успевает и начинает дёргаться
       }
     } finally {
       this.writing = false;

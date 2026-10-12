@@ -70,6 +70,8 @@
 
     <label class="row"><span>Скорость</span><b id="speedVal">50</b></label>
     <input type="range" id="speed" min="1" max="100" value="50">
+    <label class="row"><span>Плавность переходов</span><b id="smoothVal">60</b></label>
+    <input type="range" id="smooth" min="0" max="100" value="60">
     <button class="btn wide ghost" id="btnStopFx">Остановить эффект</button>
   </section>
 
@@ -169,6 +171,7 @@
     <label class="row"><span>Синий</span><b id="gB">100%</b></label>
     <input type="range" id="gainB" min="0" max="100" value="100">
 
+    <label class="row check"><input type="checkbox" id="gamma" checked> Гамма-коррекция: ровные затухания и более точные цвета</label>
     <label class="row check"><input type="checkbox" id="autoReconnect" checked> Переподключаться при обрыве связи</label>
     <label class="row check"><input type="checkbox" id="keepAwake" checked> Не гасить экран при эффектах и таймерах</label>
 

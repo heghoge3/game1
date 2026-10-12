@@ -25,6 +25,8 @@ const DEFAULT_STATE = {
   favs: ['#ff00ff', '#00e5ff', '#ff3b00', '#7a00ff'],
   scenes: null,
   schedules: [],
+  smooth: 60,
+  gamma: true,
   hwTimer: { on: { en: false, time: '07:00', days: 0x7f }, off: { en: false, time: '23:30', days: 0x7f } },
 };
 
@@ -79,13 +81,50 @@ function noise(x, ch = 0) {
 }
 
 // ---------- вывод на ленту ----------
+// Цвета в приложении — «как видит глаз» (0–255). Светодиоды светят линейно, поэтому
+// перед отправкой применяем гамму 2.2: так затухания и переливы идут равномерно,
+// без резкого провала в темноту и скачков у нижней границы яркости.
+// Сглаживание тоже идёт в линейном свете, чтобы переходы не проседали по яркости.
+const GAMMA = 2.2;
+const toLin = v => (S.gamma ? Math.pow(clamp(v, 0, 255) / 255, GAMMA) : clamp(v, 0, 255) / 255);
+const fromLin = v => 255 * (S.gamma ? Math.pow(clamp(v, 0, 1), 1 / GAMMA) : clamp(v, 0, 1));
+const mixLin = (a, b, t) => a.map((v, i) => fromLin(lerp(toLin(v), toLin(b[i]), t)));
+
+const eng = { cur: null, target: [0, 0, 0], tau: 0, timer: null, last: 0 };
 let lastSent = '';
-function output(rgb, force = false) {
-  const shown = rgb.map(v => clamp(Math.round(v), 0, 255));
-  const css = toHex(shown);
-  document.documentElement.style.setProperty('--live', css);
+
+// rgb — целевой цвет; tau — постоянная сглаживания в мс (0 — мгновенно)
+function output(rgb, tau = 250, force = false) {
+  document.documentElement.style.setProperty('--live', toHex(rgb.map(v => clamp(Math.round(v), 0, 255))));
+  eng.target = rgb.map(toLin);
   if (!S.power) return;
-  const corrected = shown.map((v, i) => Math.round(v * S.gain[i] / 100));
+  if (!eng.cur || tau <= 0 || force) {
+    eng.cur = [...eng.target];
+    stopEngine();
+    sendLin(eng.cur, force);
+    return;
+  }
+  eng.tau = tau;
+  if (!eng.timer) { eng.last = performance.now(); eng.timer = setInterval(engineTick, 20); }
+}
+
+function engineTick() {
+  const now = performance.now(), k = 1 - Math.exp(-(now - eng.last) / eng.tau);
+  eng.last = now;
+  let done = true;
+  eng.cur = eng.cur.map((v, i) => {
+    const n = v + (eng.target[i] - v) * k;
+    if (Math.abs(eng.target[i] - n) > 0.0005) done = false;
+    return n;
+  });
+  // в статичном режиме цикл останавливается, когда цвет догнал цель
+  if (done && !fxTimer && !audio && !alarm) { eng.cur = [...eng.target]; stopEngine(); }
+  sendLin(eng.cur);
+}
+function stopEngine() { clearInterval(eng.timer); eng.timer = null; }
+
+function sendLin(lin, force = false) {
+  const corrected = lin.map((v, i) => Math.round(255 * v * S.gain[i] / 100));
   const idx = { R: 0, G: 1, B: 2 };
   const ordered = S.order.split('').map(ch => corrected[idx[ch]]);
   const key = ordered.join(',');
@@ -93,12 +132,13 @@ function output(rgb, force = false) {
   lastSent = key;
   mgr.color(...ordered);
 }
+const fxTau = fx => (fx.sharp ? 0 : 40 + S.smooth * 6);   // 40…640 мс
 
 function setPower(on) {
   S.power = on;
   mgr.power(on);
-  if (on) { lastSent = ''; mgr.brightness(S.bright); restoreMode(); }
-  else stopLoops();
+  if (on) { lastSent = ''; eng.cur = null; mgr.brightness(S.bright); restoreMode(); }
+  else { stopLoops(); stopEngine(); }
   renderPower(); save();
 }
 
@@ -118,6 +158,9 @@ function setStaticColor(rgb) {
   syncWheel(); renderActive(); save();
 }
 
+// скорость по экспоненте: левая половина ползунка — медленные спокойные эффекты
+const speedK = () => 0.08 * Math.pow(25, S.speed / 100);  // 0.08…2.0
+
 function startSoft(id) {
   stopLoops();
   S.mode = 'soft'; S.soft = id;
@@ -125,11 +168,10 @@ function startSoft(id) {
   fxStart = performance.now();
   const tick = () => {
     const t = (performance.now() - fxStart) / 1000;
-    const sp = 0.15 + (S.speed / 100) * 2.5;  // множитель скорости
-    output(fx.fn(t * sp, t));
+    output(fx.fn(t * speedK(), t), fxTau(fx));
   };
+  fxTimer = setInterval(tick, 30);
   tick();
-  fxTimer = setInterval(tick, 50);
   renderActive(); updateWakeLock(); save();
 }
 
@@ -144,7 +186,7 @@ function startHw(code) {
 function restoreMode() {
   if (S.mode === 'soft' && S.soft) startSoft(S.soft);
   else if (S.mode === 'hw' && S.hw != null) startHw(S.hw);
-  else output(S.rgb, true);
+  else output(S.rgb, 0, true);
 }
 
 // ---------- эффекты ----------
@@ -152,38 +194,38 @@ const FAV = () => (S.favs.length ? S.favs : DEFAULT_STATE.favs).map(fromHex).fil
 const cycle = (colors, x) => {
   const n = colors.length, i = Math.floor(x) % n;
   const f = x - Math.floor(x), u = f * f * (3 - 2 * f);
-  return mix(colors[i], colors[(i + 1) % n], u);
+  return mixLin(colors[i], colors[(i + 1) % n], u);
 };
 
 const SOFT_FX = [
   { id: 'rainbow', em: '🌈', nm: 'Радуга', bar: 'linear-gradient(90deg,red,orange,yellow,lime,cyan,blue,magenta)',
-    fn: x => hsv2rgb(x * 40, 1, 1) },
+    fn: x => hsv2rgb(x * 30, 1, 1) },
   { id: 'breath', em: '🫁', nm: 'Дыхание', bar: 'var(--live)',
-    fn: x => scale(S.rgb, 0.08 + 0.92 * (0.5 - 0.5 * Math.cos(x * 2))) },
+    fn: x => scale(S.rgb, 0.12 + 0.88 * (0.5 - 0.5 * Math.cos(x * 2.5))) },
   { id: 'favs', em: '⭐', nm: 'Мои цвета', bar: 'linear-gradient(90deg,#ff00ff,#00e5ff,#ff3b00)',
     fn: x => cycle(FAV(), x * 0.5) },
   { id: 'candle', em: '🕯️', nm: 'Свеча', bar: 'linear-gradient(90deg,#ff7a00,#ffb347)',
-    fn: (x, t) => scale([255, 120, 20], 0.55 + 0.45 * noise(t * 6) * (0.7 + 0.3 * noise(t * 17, 1))) },
+    fn: x => scale([255, 120, 20], 0.6 + 0.4 * noise(x * 3) * (0.8 + 0.2 * noise(x * 7, 1))) },
   { id: 'fire', em: '🔥', nm: 'Огонь', bar: 'linear-gradient(90deg,#ff1e00,#ff9500)',
-    fn: x => { const n = noise(x * 3); return [255, 30 + 110 * n, 0].map(v => v * (0.6 + 0.4 * noise(x * 7, 2))); } },
+    fn: x => { const n = noise(x * 2); return [255, 40 + 100 * n, 0].map(v => v * (0.65 + 0.35 * noise(x * 4, 2))); } },
   { id: 'ocean', em: '🌊', nm: 'Океан', bar: 'linear-gradient(90deg,#003cff,#00e5ff)',
-    fn: x => mix([0, 40, 255], [0, 220, 255], noise(x * 0.8)).map((v, i) => i === 1 ? v * (0.7 + 0.3 * noise(x * 1.7, 3)) : v) },
+    fn: x => mixLin([0, 40, 255], [0, 220, 255], noise(x * 0.6)).map(v => v * (0.8 + 0.2 * noise(x * 1.1, 3))) },
   { id: 'aurora', em: '🌌', nm: 'Сияние', bar: 'linear-gradient(90deg,#00ff88,#00b3ff,#9d00ff)',
     fn: x => cycle([[0, 255, 120], [0, 180, 255], [150, 0, 255], [0, 255, 200]], x * 0.35) },
   { id: 'sunset', em: '🌇', nm: 'Закат', bar: 'linear-gradient(90deg,#ff5e00,#ff006a,#7000ff)',
     fn: x => cycle([[255, 80, 0], [255, 0, 90], [120, 0, 255], [255, 0, 40]], x * 0.3) },
-  { id: 'police', em: '🚨', nm: 'Полиция', bar: 'linear-gradient(90deg,red 50%,blue 50%)',
+  { id: 'police', em: '🚨', nm: 'Полиция', sharp: true, bar: 'linear-gradient(90deg,red 50%,blue 50%)',
     fn: x => { const p = (x * 2) % 2, s = (p % 1) < 0.5 && Math.floor((p % 1) * 8) % 2 === 0; return s ? (p < 1 ? [255, 0, 0] : [0, 0, 255]) : [0, 0, 0]; } },
-  { id: 'strobe', em: '⚡', nm: 'Стробоскоп', bar: '#fff',
+  { id: 'strobe', em: '⚡', nm: 'Стробоскоп', sharp: true, bar: '#fff',
     fn: x => ((x * 6) % 1 < 0.25 ? S.rgb : [0, 0, 0]) },
   { id: 'heart', em: '💓', nm: 'Сердцебиение', bar: '#ff0040',
     fn: x => { const p = (x * 0.8) % 1; const k = Math.exp(-((p - 0.1) ** 2) / 0.002) + 0.7 * Math.exp(-((p - 0.3) ** 2) / 0.002); return scale([255, 0, 50], 0.05 + 0.95 * Math.min(1, k)); } },
-  { id: 'brokenneon', em: '🍸', nm: 'Старая вывеска', bar: 'var(--live)',
+  { id: 'brokenneon', em: '🍸', nm: 'Старая вывеска', sharp: true, bar: 'var(--live)',
     fn: (x, t) => { const n = noise(t * 3, 4); return n < 0.18 ? scale(S.rgb, noise(t * 40, 5) > 0.5 ? 0.15 : 1) : S.rgb; } },
   { id: 'random', em: '🎲', nm: 'Случайные', bar: 'linear-gradient(90deg,#f0f,#0f0,#fa0)',
-    fn: x => hsv2rgb(noise(x * 0.4, 6) * 720, 1, 1) },
+    fn: x => hsv2rgb(noise(x * 0.25, 6) * 540, 1, 1) },
   { id: 'chase', em: '🎡', nm: 'Вспышки цвета', bar: 'linear-gradient(90deg,#ff0,#0ff,#f0f)',
-    fn: x => { const i = Math.floor(x * 1.5); const f = (x * 1.5) % 1; return scale(hsv2rgb(i * 137.5, 1, 1), Math.max(0, 1 - f * 1.6)); } },
+    fn: x => { const i = Math.floor(x), f = x % 1; return scale(hsv2rgb(i * 137.5, 1, 1), 0.1 + 0.9 * Math.sin(Math.PI * f)); } },
 ];
 
 const HW_FX = [
@@ -301,7 +343,7 @@ function musicTick() {
       rgb = now - a.lastBeat < 90 ? [255, 255, 255] : hsv2rgb(a.hue, 1, k(a.level * 0.7));
       break;
   }
-  output(rgb);
+  output(rgb, S.music === 'disco' ? 0 : 70);
 }
 
 // ---------- сцены ----------
@@ -371,7 +413,7 @@ function timerTick() {
   if (sleepTimer) {
     const p = (now - sleepTimer.start) / (sleepTimer.end - sleepTimer.start);
     if (p >= 1) { const from = sleepTimer.from; sleepTimer = null; setPower(false); S.bright = from; toast('Спокойной ночи 🌙'); renderTimers(); updateWakeLock(); }
-    else mgr.brightness(Math.max(1, sleepTimer.from * (1 - p)));
+    else mgr.brightness(Math.max(1, sleepTimer.from * Math.pow(1 - p, 2)));
   }
   if (alarm) {
     const startAt = alarm.at - alarm.dur * 60000;
@@ -383,7 +425,7 @@ function timerTick() {
       }
       const p = clamp((now - startAt) / (alarm.dur * 60000), 0, 1);
       const c = cycle(SUNRISE, p * (SUNRISE.length - 1.001));
-      output(c);
+      output(c, 1500);
       if (p >= 1) { S.rgb = c.map(Math.round); alarm = null; renderTimers(); updateWakeLock(); save(); toast('Доброе утро ☀️'); }
     }
   }
@@ -632,8 +674,12 @@ $('order').onchange = e => { S.order = e.target.value; lastSent = ''; restoreMod
 ['R', 'G', 'B'].forEach((ch, i) => {
   const el = $('gain' + ch);
   el.value = S.gain[i]; $('g' + ch).textContent = S.gain[i] + '%';
-  el.addEventListener('input', () => { S.gain[i] = +el.value; $('g' + ch).textContent = el.value + '%'; if (S.mode === 'color') output(S.rgb, true); save(); });
+  el.addEventListener('input', () => { S.gain[i] = +el.value; $('g' + ch).textContent = el.value + '%'; if (S.mode === 'color') output(S.rgb, 0, true); save(); });
 });
+$('smooth').value = S.smooth; $('smoothVal').textContent = S.smooth;
+$('smooth').addEventListener('input', e => { S.smooth = +e.target.value; $('smoothVal').textContent = S.smooth; save(); });
+$('gamma').checked = S.gamma;
+$('gamma').onchange = e => { S.gamma = e.target.checked; eng.cur = null; restoreMode(); save(); };
 $('autoReconnect').checked = S.autoReconnect;
 $('autoReconnect').onchange = e => { S.autoReconnect = mgr.autoReconnect = e.target.checked; save(); };
 $('keepAwake').checked = S.keepAwake;
@@ -659,7 +705,7 @@ async function connect(acceptAll = false) {
   renderStatus();
 }
 function pushStateTo() {
-  lastSent = '';
+  lastSent = ''; eng.cur = null;
   mgr.syncClock();
   mgr.power(S.power);
   if (S.power) { mgr.brightness(S.bright); restoreMode(); }
