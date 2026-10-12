@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b12">
+<title>Neon Control</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="glow-dot" id="previewDot"></span>
+    <span>Neon Control</span>
+  </div>
+  <div class="top-actions">
+    <button class="pill" id="btnConnect"><span class="status-dot" id="statusDot"></span><span id="statusText">Подключить</span></button>
+    <button class="power" id="btnPower" aria-label="Питание">⏻</button>
+  </div>
+</header>
+
+<div id="unsupported" class="banner hidden">
+  Браузер не поддерживает Web Bluetooth. Открой страницу в <b>Chrome на Android</b> или в Chrome/Edge на компьютере (страница должна быть по https).
+</div>
+
+<main>
+  <!-- ЦВЕТ -->
+  <section class="tab active" id="tab-color">
+    <div class="wheel-wrap">
+      <canvas id="wheel" width="600" height="600"></canvas>
+      <div class="wheel-knob" id="wheelKnob"></div>
+    </div>
+
+    <label class="row">
+      <span>Яркость</span><b id="brightVal">100%</b>
+    </label>
+    <input type="range" id="bright" min="1" max="100" value="100">
+
+    <label class="row">
+      <span>Тёплый ↔ холодный белый</span><b id="kelvinVal">—</b>
+    </label>
+    <input type="range" id="kelvin" min="1800" max="9000" step="100" value="4000" class="kelvin-range">
+
+    <div class="row"><span>Быстрые цвета</span></div>
+    <div class="swatches" id="quickColors"></div>
+
+    <div class="row">
+      <span>Избранное</span>
+      <button class="link" id="btnAddFav">+ добавить текущий</button>
+    </div>
+    <div class="swatches" id="favColors"></div>
+    <p class="hint">Долгое нажатие на избранный цвет удаляет его.</p>
+
+    <div class="row"><span>HEX</span></div>
+    <div class="hex-row">
+      <input type="text" id="hexInput" maxlength="7" value="#ff00ff" spellcheck="false">
+      <button class="btn" id="btnHex">Применить</button>
+    </div>
+  </section>
+
+  <!-- ЭФФЕКТЫ -->
+  <section class="tab" id="tab-fx">
+    <h2>Умные эффекты <small>считаются в телефоне, экран должен быть включён</small></h2>
+    <div class="grid" id="softFx"></div>
+
+    <h2>Встроенные эффекты <small>работают в самом контроллере</small></h2>
+    <div class="grid" id="hwFx"></div>
+
+    <label class="row"><span>Скорость</span><b id="speedVal">50</b></label>
+    <input type="range" id="speed" min="1" max="100" value="50">
+    <button class="btn wide ghost" id="btnStopFx">Остановить эффект</button>
+  </section>
+
+  <!-- МУЗЫКА -->
+  <section class="tab" id="tab-music">
+    <h2>Светомузыка <small>через микрофон телефона</small></h2>
+    <div class="meter"><div id="meterBar"></div><div id="meterBeat"></div></div>
+    <div class="grid three" id="musicModes"></div>
+    <label class="row"><span>Чувствительность</span><b id="sensVal">60</b></label>
+    <input type="range" id="sens" min="1" max="100" value="60">
+    <label class="row"><span>Минимальная яркость</span><b id="floorVal">5%</b></label>
+    <input type="range" id="floor" min="0" max="60" value="5">
+    <button class="btn wide" id="btnMusic">🎤 Включить светомузыку</button>
+    <p class="hint">Браузер попросит доступ к микрофону. Звук никуда не отправляется, анализ идёт только на телефоне.</p>
+  </section>
+
+  <!-- СЦЕНЫ -->
+  <section class="tab" id="tab-scenes">
+    <h2>Сцены</h2>
+    <div class="grid" id="scenes"></div>
+    <button class="btn wide" id="btnSaveScene">💾 Сохранить текущее как сцену</button>
+    <p class="hint">Долгое нажатие на сцену удаляет её.</p>
+  </section>
+
+  <!-- ТАЙМЕРЫ -->
+  <section class="tab" id="tab-timer">
+    <h2>Таймер сна <small>плавно гасит и выключает</small></h2>
+    <div class="chips" id="sleepChips"></div>
+    <div class="timer-status" id="sleepStatus"></div>
+
+    <h2>Будильник-рассвет <small>плавно разгорается от красного к дневному свету</small></h2>
+    <div class="hex-row">
+      <input type="time" id="alarmTime" value="07:00">
+      <select id="alarmDur">
+        <option value="5">за 5 мин</option>
+        <option value="15" selected>за 15 мин</option>
+        <option value="30">за 30 мин</option>
+      </select>
+    </div>
+    <button class="btn wide" id="btnAlarm">⏰ Завести</button>
+    <div class="timer-status" id="alarmStatus"></div>
+
+    <h2>Включить / выключить в заданное время</h2>
+    <div class="hex-row">
+      <select id="schedAction">
+        <option value="on">Включить</option>
+        <option value="off">Выключить</option>
+      </select>
+      <input type="time" id="schedTime" value="22:00">
+    </div>
+    <button class="btn wide" id="btnSched">Добавить</button>
+    <div class="timer-status" id="schedStatus"></div>
+
+    <p class="hint">Таймеры работают, пока страница открыта. Приложение не даёт экрану погаснуть, поэтому оставь телефон на зарядке.</p>
+  </section>
+
+  <!-- НАСТРОЙКИ -->
+  <section class="tab" id="tab-settings">
+    <h2>Лента</h2>
+    <div class="devices" id="devices"></div>
+    <button class="btn wide ghost" id="btnAddDevice">+ Подключить ещё одну ленту</button>
+
+    <label class="row"><span>Протокол контроллера</span></label>
+    <select id="variant">
+      <option value="auto">Авто (по имени устройства)</option>
+      <option value="elk">ELK-BLEDOM / Lotus Lantern / duoCo</option>
+      <option value="melk">MELK / ELK-BLEDOB</option>
+      <option value="ledble">LEDBLE (ffe1)</option>
+    </select>
+
+    <label class="row"><span>Порядок цветов</span></label>
+    <select id="order">
+      <option>RGB</option><option>RBG</option><option>GRB</option>
+      <option>GBR</option><option>BRG</option><option>BGR</option>
+    </select>
+    <p class="hint">Если при выборе красного горит зелёный или синий, подбери здесь правильный порядок.</p>
+
+    <h2>Коррекция цвета <small>если белый уходит в синеву или розовый</small></h2>
+    <label class="row"><span>Красный</span><b id="gR">100%</b></label>
+    <input type="range" id="gainR" min="0" max="100" value="100">
+    <label class="row"><span>Зелёный</span><b id="gG">100%</b></label>
+    <input type="range" id="gainG" min="0" max="100" value="100">
+    <label class="row"><span>Синий</span><b id="gB">100%</b></label>
+    <input type="range" id="gainB" min="0" max="100" value="100">
+
+    <label class="row check"><input type="checkbox" id="autoReconnect" checked> Переподключаться при обрыве связи</label>
+    <label class="row check"><input type="checkbox" id="keepAwake" checked> Не гасить экран при эффектах и таймерах</label>
+
+    <h2>Консоль <small>для экспериментов с протоколом</small></h2>
+    <div class="hex-row">
+      <input type="text" id="rawCmd" placeholder="7e 00 05 03 ff 00 00 00 ef" spellcheck="false">
+      <button class="btn" id="btnRaw">Отправить</button>
+    </div>
+    <pre class="log" id="log"></pre>
+  </section>
+</main>
+
+<nav class="bottom">
+  <button data-tab="color" class="active"><span>🎨</span>Цвет</button>
+  <button data-tab="fx"><span>✨</span>Эффекты</button>
+  <button data-tab="music"><span>🎵</span>Музыка</button>
+  <button data-tab="scenes"><span>🎬</span>Сцены</button>
+  <button data-tab="timer"><span>⏰</span>Таймеры</button>
+  <button data-tab="settings"><span>⚙️</span>Ещё</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script src="ble.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
