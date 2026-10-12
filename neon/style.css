@@ -129,3 +129,10 @@ nav.bottom button.active span { filter: none; }
   background: #26263a; padding: 10px 16px; border-radius: 12px; opacity: 0; pointer-events: none; transition: .25s; max-width: 90%; text-align: center;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.hw-timer { background: var(--panel); border: 1px solid #25253a; border-radius: var(--radius); padding: 4px 12px 12px; margin-bottom: 10px; }
+.hw-timer .row { margin: 10px 0; }
+.hw-timer input[type=time] { width: 100%; }
+.days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 10px; }
+.days button { background: var(--panel2); border: 1px solid #2c2c44; border-radius: 10px; padding: 8px 0; font-size: 13px; }
+.days button.on { background: var(--accent); border-color: var(--accent); color: #fff; }

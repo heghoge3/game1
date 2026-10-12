@@ -6,6 +6,9 @@ const VARIANTS = {
     label: 'ELK-BLEDOM',
     on:  [0x7e, 0x00, 0x04, 0xf0, 0x00, 0x01, 0xff, 0x00, 0xef],
     off: [0x7e, 0x00, 0x04, 0x00, 0x00, 0x00, 0xff, 0x00, 0xef],
+    // часть ELK-BLEDOM понимает вкл/выкл только с 0x04 во втором байте — шлём оба варианта
+    on2:  [0x7e, 0x04, 0x04, 0xf0, 0x00, 0x01, 0xff, 0x00, 0xef],
+    off2: [0x7e, 0x04, 0x04, 0x00, 0x00, 0x00, 0xff, 0x00, 0xef],
     color: (r, g, b) => [0x7e, 0x00, 0x05, 0x03, r, g, b, 0x00, 0xef],
     bright: v => [0x7e, 0x00, 0x01, v, 0x00, 0x00, 0x00, 0x00, 0xef],
     effect: m => [0x7e, 0x00, 0x03, m, 0x03, 0x00, 0x00, 0x00, 0xef],
@@ -31,6 +34,12 @@ const VARIANTS = {
     speed: v => [0x7e, 0x00, 0x02, v, 0x00, 0x00, 0x00, 0x00, 0xef],
   },
 };
+
+// Встроенные часы и таймер контроллера (общие для всех вариантов).
+// Дни недели — битовая маска: Пн=0x01 … Вс=0x40; старший бит 0x80 — таймер включён.
+const clockCmd = d => [0x7e, 0x00, 0x83, d.getHours(), d.getMinutes(), d.getSeconds(), d.getDay() || 7, 0x00, 0xef];
+const timerCmd = (turnOn, h, m, days, enabled) =>
+  [0x7e, 0x00, 0x82, h, m, 0x00, turnOn ? 0x00 : 0x01, (days & 0x7f) | (enabled ? 0x80 : 0), 0xef];
 
 // Пары «сервис → характеристика записи», которые встречаются у этих контроллеров.
 const GATT_CANDIDATES = [
@@ -181,7 +190,15 @@ class StripManager {
 
   // Высокоуровневые команды — уходят на все подключённые ленты.
   each(fn) { this.strips.filter(s => s.connected).forEach(fn); }
-  power(on) { this.each(s => s.send('power', on ? s.variant.on : s.variant.off)); }
+  power(on) {
+    this.each(s => {
+      const v = s.variant;
+      s.send('power', on ? v.on : v.off);
+      if (v.on2) s.send('power2', on ? v.on2 : v.off2);
+    });
+  }
+  syncClock() { this.each(s => s.send('clock', clockCmd(new Date()))); }
+  hwTimer(turnOn, h, m, days, enabled) { this.each(s => s.send(turnOn ? 'timerOn' : 'timerOff', timerCmd(turnOn, h, m, days, enabled))); }
   color(r, g, b) { this.each(s => s.send('color', s.variant.color(r, g, b))); }
   brightness(v) { this.each(s => s.send('bright', s.variant.bright(Math.round(v)))); }
   effect(m) { this.each(s => s.send('effect', s.variant.effect(m))); }

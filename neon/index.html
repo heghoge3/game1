@@ -96,6 +96,20 @@
 
   <!-- ТАЙМЕРЫ -->
   <section class="tab" id="tab-timer">
+    <h2>Таймер в самой ленте <small>работает без телефона: часы и расписание хранит контроллер</small></h2>
+    <div class="hw-timer">
+      <label class="row check"><input type="checkbox" id="hwOnEn"> 💡 Включать в</label>
+      <input type="time" id="hwOnTime" value="07:00">
+      <div class="days" data-for="on"></div>
+    </div>
+    <div class="hw-timer">
+      <label class="row check"><input type="checkbox" id="hwOffEn"> 🌑 Выключать в</label>
+      <input type="time" id="hwOffTime" value="23:30">
+      <div class="days" data-for="off"></div>
+    </div>
+    <button class="btn wide" id="btnHwTimer">📲 Записать в ленту</button>
+    <p class="hint">При каждом подключении приложение само выставляет ленте точное время. Если лента была обесточена (выдернули из розетки), её часы сбиваются: просто подключись к ней один раз.</p>
+
     <h2>Таймер сна <small>плавно гасит и выключает</small></h2>
     <div class="chips" id="sleepChips"></div>
     <div class="timer-status" id="sleepStatus"></div>
@@ -112,7 +126,7 @@
     <button class="btn wide" id="btnAlarm">⏰ Завести</button>
     <div class="timer-status" id="alarmStatus"></div>
 
-    <h2>Включить / выключить в заданное время</h2>
+    <h2>Включить / выключить по телефону <small>запасной вариант, если встроенный таймер не сработает</small></h2>
     <div class="hex-row">
       <select id="schedAction">
         <option value="on">Включить</option>
@@ -123,7 +137,7 @@
     <button class="btn wide" id="btnSched">Добавить</button>
     <div class="timer-status" id="schedStatus"></div>
 
-    <p class="hint">Таймеры работают, пока страница открыта. Приложение не даёт экрану погаснуть, поэтому оставь телефон на зарядке.</p>
+    <p class="hint">Таймер сна, рассвет и расписание по телефону работают, пока страница открыта. Приложение не даёт экрану погаснуть, поэтому оставь телефон на зарядке.</p>
   </section>
 
   <!-- НАСТРОЙКИ -->

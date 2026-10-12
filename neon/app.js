@@ -25,6 +25,7 @@ const DEFAULT_STATE = {
   favs: ['#ff00ff', '#00e5ff', '#ff3b00', '#7a00ff'],
   scenes: null,
   schedules: [],
+  hwTimer: { on: { en: false, time: '07:00', days: 0x7f }, off: { en: false, time: '23:30', days: 0x7f } },
 };
 
 function loadState() {
@@ -399,6 +400,44 @@ function timerTick() {
 }
 setInterval(timerTick, 1000);
 
+// ---------- встроенный таймер контроллера ----------
+const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+function renderHwTimer() {
+  for (const kind of ['on', 'off']) {
+    const t = S.hwTimer[kind], K = kind === 'on' ? 'On' : 'Off';
+    $('hw' + K + 'En').checked = t.en;
+    $('hw' + K + 'Time').value = t.time;
+    const box = document.querySelector(`.days[data-for=${kind}]`);
+    box.innerHTML = '';
+    DAY_NAMES.forEach((nm, i) => {
+      const b = document.createElement('button');
+      b.textContent = nm;
+      b.classList.toggle('on', !!(t.days & (1 << i)));
+      b.onclick = () => { t.days ^= 1 << i; renderHwTimer(); save(); };
+      box.append(b);
+    });
+  }
+}
+for (const kind of ['on', 'off']) {
+  const K = kind === 'on' ? 'On' : 'Off';
+  $('hw' + K + 'En').onchange = e => { S.hwTimer[kind].en = e.target.checked; save(); };
+  $('hw' + K + 'Time').onchange = e => { S.hwTimer[kind].time = e.target.value; save(); };
+}
+function writeHwTimer(silent) {
+  if (!mgr.anyConnected) { if (!silent) toast('Сначала подключи ленту'); return; }
+  mgr.syncClock();
+  for (const kind of ['on', 'off']) {
+    const t = S.hwTimer[kind];
+    const [h, m] = t.time.split(':').map(Number);
+    mgr.hwTimer(kind === 'on', h, m, t.days, t.en && t.days > 0);
+  }
+  if (!silent) {
+    const parts = ['on', 'off'].filter(k => S.hwTimer[k].en).map(k => `${k === 'on' ? 'вкл' : 'выкл'} в ${S.hwTimer[k].time}`);
+    toast(parts.length ? `Записано в ленту: ${parts.join(', ')}` : 'Таймеры в ленте отключены');
+  }
+}
+$('btnHwTimer').onclick = () => writeHwTimer(false);
+
 // ---------- не давать экрану гаснуть ----------
 let wakeLock = null;
 async function updateWakeLock() {
@@ -621,6 +660,7 @@ async function connect(acceptAll = false) {
 }
 function pushStateTo() {
   lastSent = '';
+  mgr.syncClock();
   mgr.power(S.power);
   if (S.power) { mgr.brightness(S.bright); restoreMode(); }
 }
@@ -670,6 +710,7 @@ renderSwatches();
 renderScenes();
 renderActive();
 renderTimers();
+renderHwTimer();
 renderPower();
 renderStatus();
 document.documentElement.style.setProperty('--live', toHex(S.rgb));
