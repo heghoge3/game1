@@ -699,7 +699,8 @@ async function connect(acceptAll = false) {
     toast(`Подключено: ${s.name}`);
     pushStateTo();
   } catch (e) {
-    if (e.name !== 'NotFoundError') toast('Ошибка: ' + e.message);
+    if (e.name === 'AbortError') { /* пользователь закрыл список */ }
+    else if (e.name !== 'NotFoundError') toast('Ошибка: ' + e.message);
     else if (!acceptAll && confirm('Лента не найдена в списке? Показать все Bluetooth-устройства?')) return connect(true);
   }
   renderStatus();
@@ -761,4 +762,4 @@ renderPower();
 renderStatus();
 document.documentElement.style.setProperty('--live', toHex(S.rgb));
 
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.AndroidBle) navigator.serviceWorker.register('sw.js').catch(() => {});

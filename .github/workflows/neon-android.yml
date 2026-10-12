@@ -1,0 +1,50 @@
+name: Neon Control APK
+
+on:
+  push:
+    paths:
+      - 'neon/**'
+      - 'neon-android/**'
+      - '.github/workflows/neon-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Сборка APK
+        run: gradle -p neon-android assembleRelease --stacktrace
+
+      - name: Переименовать
+        run: cp neon-android/app/build/outputs/apk/release/app-release.apk NeonControl.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NeonControl
+          path: NeonControl.apk
+
+      - name: Релиз
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: neon-v${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Neon Control ${{ github.run_number }}
+          body: |
+            Приложение для управления LED-лентой ELK-BLEDOM / Lotus Lantern / duoCo.
+            Скачай **NeonControl.apk** ниже и установи на телефон.
+          files: NeonControl.apk
+          make_latest: true
